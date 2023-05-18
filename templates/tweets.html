@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+    <title>Tweets</title>
+
+</head>
+
+<body>
+
+    <h1>Tweets from last 24 hours</h1>
+
+    <ul>
+
+        {% for tweet in tweets %}
+
+            <li>{{ tweet.text }}</li>
+
+        {% endfor %}
+
+    </ul>
+
+</body>
+
+</html>
+
