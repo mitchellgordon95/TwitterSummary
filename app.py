@@ -118,7 +118,6 @@ def tweets():
     # Get Twitter API credentials
     access_token = current_user.access_token
     access_token_secret = current_user.access_token_secret
-    print(f'tweets user id {current_user.id}')
 
     # Set up the Twitter API client
     client = tweepy.Client(bearer_token=environ.get("BEARER_TOKEN"), 
@@ -160,7 +159,6 @@ def tweets():
         # Join all tweets in the cluster into a single text
         tweet_str = '\n'.join(clustered_tweets[i])
         prompt = f"Here is a list of tweets:\n\n{tweet_str}\n\nPlease generate a summary topic for these tweets.\n\nAll these tweets are tweeting about"
-        print(prompt)
 
         # Generate a summary using the OpenAI API
         response = openai.Completion.create(
@@ -172,7 +170,14 @@ def tweets():
         )
 
         summary = response.choices[0].text.strip()
-        cluster_summaries[i] = f"{len(clustered_tweets[i])} people are talking about {summary}"
+        if len(clustered_tweets[i]) == 1:
+          cluster_summaries[i] = f"1 person is talking about {summary}"
+        else:
+          cluster_summaries[i] = f"{len(clustered_tweets[i])} people are talking about {summary}"
+
+    # Convert dictionaries to lists, sort by cluster size, and convert back to dictionaries
+    clustered_tweets = dict(sorted(clustered_tweets.items(), key=lambda item: len(item[1]), reverse=True))
+    cluster_summaries = dict(sorted(cluster_summaries.items(), key=lambda item: len(clustered_tweets[item[0]]), reverse=True))
 
     return render_template('tweets.html', clustered_tweets=clustered_tweets, cluster_summaries=cluster_summaries)
 
