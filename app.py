@@ -7,6 +7,13 @@ from os import environ
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 import tweepy
+import openai
+import numpy as np
+from sklearn.cluster import KMeans
+from sklearn.manifold import TSNE
+import matplotlib.pyplot as plt
+
+DEBUG = False
 
 load_dotenv()
 
@@ -72,6 +79,38 @@ def authorize():
     login_user(new_user)
     return redirect(url_for('tweets'))
 
+def elbow_method(embeddings_array):
+    # Perform the Elbow Method
+    scores = []
+    max_clusters = 10  # adjust as needed
+    for k in range(2, max_clusters+1):
+        kmeans = KMeans(n_clusters=k, random_state=0).fit(embeddings_array)
+        score = kmeans.inertia_
+        scores.append(score)
+
+    if DEBUG:
+      # Create the Elbow Method plot
+      plt.figure(figsize=(10, 10))
+      plt.plot(range(2, max_clusters+1), scores, marker='o')
+      plt.title('The Elbow Method')
+      plt.xlabel('Number of clusters')
+      plt.ylabel('WCSS')  # Within-Cluster-Sum-of-Squares
+      plt.savefig('elbow.png')  # save to a file
+
+    return scores.index(min(scores)) + 2  # +2 because our range starts at 2
+
+def tsne(embeddings_array, optimal_clusters, kmeans):
+    # Perform t-SNE
+    tsne = TSNE(n_components=2, random_state=0)
+    embeddings_2d = tsne.fit_transform(embeddings_array)
+
+    # Create a scatter plot
+    plt.figure(figsize=(10, 10))
+    for i in range(optimal_clusters):
+        points = embeddings_2d[kmeans.labels_ == i]
+        plt.scatter(points[:, 0], points[:, 1], label=f'Cluster {i}')
+    plt.legend()
+    plt.savefig('clusters.png')  # save to a file
 
 @app.route('/tweets')
 @login_required
@@ -81,17 +120,62 @@ def tweets():
     access_token_secret = current_user.access_token_secret
     print(f'tweets user id {current_user.id}')
 
-    # Set up the API client
+    # Set up the Twitter API client
     client = tweepy.Client(bearer_token=environ.get("BEARER_TOKEN"), 
                            consumer_key=environ.get('TWITTER_API_KEY'), 
                            consumer_secret=environ.get('TWITTER_API_SECRET'), 
                            access_token=access_token, 
                            access_token_secret=access_token_secret)
 
-    tweets = client.get_home_timeline()
-    print(tweets)
+    now = datetime.now()
+    date_24_hours_ago = now - timedelta(hours=24)
+    tweets = client.get_home_timeline(start_time=date_24_hours_ago)
 
-    return render_template('tweets.html', tweets=tweets.data)
+    # Set up the OpenAI API client
+    openai.api_key = environ.get('OPENAI_API_KEY')
+
+    # Convert tweets to embeddings
+    embeddings = []
+    for tweet in tweets.data:
+        response = openai.Embedding.create(
+            model="text-embedding-ada-002",
+            input=[tweet.text]
+        )
+        embeddings.append(response["data"][0]["embedding"])
+
+    embeddings_array = np.array(embeddings)
+    optimal_clusters = 10
+    kmeans = KMeans(n_clusters=optimal_clusters, random_state=0).fit(embeddings_array)
+
+    if DEBUG:
+        tsne(embeddings_array, optimal_clusters, kmeans)
+
+    # Assign each tweet to a cluster and generate a summary for each cluster
+    clustered_tweets = {i: [] for i in range(optimal_clusters)}
+    cluster_summaries = {i: '' for i in range(optimal_clusters)}
+    for i, label in enumerate(kmeans.labels_):
+        clustered_tweets[label].append(tweets.data[i].text)
+    
+    for i in range(optimal_clusters):
+        # Join all tweets in the cluster into a single text
+        tweet_str = '\n'.join(clustered_tweets[i])
+        prompt = f"Here is a list of tweets:\n\n{tweet_str}\n\nPlease generate a summary topic for these tweets.\n\nAll these tweets are tweeting about"
+        print(prompt)
+
+        # Generate a summary using the OpenAI API
+        response = openai.Completion.create(
+            model="text-davinci-002",
+            prompt=prompt,
+            temperature=0.7,
+            max_tokens=60,
+            stop="\n",
+        )
+
+        summary = response.choices[0].text.strip()
+        cluster_summaries[i] = f"{len(clustered_tweets[i])} people are talking about {summary}"
+
+    return render_template('tweets.html', clustered_tweets=clustered_tweets, cluster_summaries=cluster_summaries)
+
 
 if __name__ == '__main__':
     app.run(debug=True)
