@@ -71,7 +71,7 @@ def authorize():
     api = tweepy.API(auth)
     user_info = api.verify_credentials()
     # TODO - don't make a new user every time we auth twitter
-    new_user = User(username='test')
+    new_user = User(username=auth.access_token)
     new_user.set_access_token(auth.access_token)
     new_user.set_access_token_secret(auth.access_token_secret)
     db.session.add(new_user)
