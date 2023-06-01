@@ -12,6 +12,9 @@ import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
+from concurrent.futures import ThreadPoolExecutor
+import concurrent
+
 
 DEBUG = False
 
@@ -97,7 +100,9 @@ def tweets():
     clustered_tweets, kmeans = cluster_tweets(embeddings_array, tweets)
 
     # Generate summaries
-    cluster_summaries = generate_summaries(clustered_tweets, kmeans)
+    with ThreadPoolExecutor() as executor:
+        cluster_summaries = executor.map(generate_summary, clustered_tweets.items())
+        cluster_summaries = dict(cluster_summaries)
 
     # Sort clusters
     clustered_tweets, cluster_summaries = sort_clusters(clustered_tweets, cluster_summaries)
@@ -117,12 +122,11 @@ def fetch_tweets(access_token, access_token_secret):
 
 def get_embeddings(tweets):
     embeddings = []
-    for tweet in tweets.data:
-        response = openai.Embedding.create(
-            model="text-embedding-ada-002",
-            input=[tweet.text]
-        )
-        embeddings.append(response["data"][0]["embedding"])
+    with ThreadPoolExecutor() as executor:
+        future_to_embedding = {executor.submit(openai.Embedding.create, model="text-embedding-ada-002", input=[tweet.text]): tweet for tweet in tweets.data}
+        for future in concurrent.futures.as_completed(future_to_embedding):
+            response = future.result()
+            embeddings.append(response["data"][0]["embedding"])
     return np.array(embeddings)
 
 def cluster_tweets(embeddings_array, tweets):
@@ -135,25 +139,23 @@ def cluster_tweets(embeddings_array, tweets):
 
     return clustered_tweets, kmeans
 
-def generate_summaries(clustered_tweets, kmeans):
-    cluster_summaries = {i: '' for i in range(len(kmeans.cluster_centers_))}
-    for i in range(len(kmeans.cluster_centers_)):
-        tweet_str = '\n'.join(clustered_tweets[i])
-        prompt = f"Here is a list of tweets:\n\n{tweet_str}\n\nPlease generate a summary topic for these tweets.\n\nAll these tweets are tweeting about"
-        response = openai.Completion.create(
-            model="text-davinci-002",
-            prompt=prompt,
-            temperature=0.7,
-            max_tokens=60,
-            stop="\n",
-        )
+def generate_summary(cluster_item):
+    i, tweets = cluster_item
+    tweet_str = '\n'.join(tweets)
+    prompt = f"Here is a list of tweets:\n\n{tweet_str}\n\nPlease generate a summary topic for these tweets.\n\nAll these tweets are tweeting about"
+    response = openai.Completion.create(
+        model="text-davinci-002",
+        prompt=prompt,
+        temperature=0.7,
+        max_tokens=60,
+        stop="\n",
+    )
 
-        summary = response.choices[0].text.strip()
-        if len(clustered_tweets[i]) == 1:
-          cluster_summaries[i] = f"1 person is talking about {summary}"
-        else:
-          cluster_summaries[i] = f"{len(clustered_tweets[i])} people are talking about {summary}"
-    return cluster_summaries
+    summary = response.choices[0].text.strip()
+    if len(tweets) == 1:
+        return i, f"1 person is talking about {summary}"
+    else:
+        return i, f"{len(tweets)} people are talking about {summary}"
 
 def sort_clusters(clustered_tweets, cluster_summaries):
     clustered_tweets = dict(sorted(clustered_tweets.items(), key=lambda item: len(item[1]), reverse=True))
