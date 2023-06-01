@@ -6,6 +6,8 @@ from tweepy import OAuthHandler, API
 from os import environ
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
+import logging
+import time
 import tweepy
 import openai
 import numpy as np
@@ -97,12 +99,29 @@ def tweets():
 
     # Convert tweets to embeddings and cluster them
     embeddings_array = get_embeddings(tweets)
-    clustered_tweets, kmeans = cluster_tweets(embeddings_array, tweets)
+    clustered_tweets, kmeans = cluster_tweets(embeddings_array, tweets, 10)
 
-    # Generate summaries
-    with ThreadPoolExecutor() as executor:
-        cluster_summaries = executor.map(generate_summary, clustered_tweets.items())
-        cluster_summaries = dict(cluster_summaries)
+    # Generate summaries and subdivide clusters as necessary
+    while True:
+        with ThreadPoolExecutor() as executor:
+            cluster_summaries = executor.map(generate_summary, clustered_tweets.items())
+            cluster_summaries = dict(cluster_summaries)
+
+        # Check if there are clusters with "MULTIPLE TOPICS"
+        multiple_topics_clusters = [i for i, summary in cluster_summaries.items() if 'MULTIPLE TOPICS' in summary]
+
+        if not multiple_topics_clusters:
+            break
+
+        for i in multiple_topics_clusters:
+            # Subdivide the cluster
+            sub_embeddings = embeddings_array[kmeans.labels_ == i]
+            sub_tweets = [tweet for j, tweet in enumerate(tweets.data) if kmeans.labels_[j] == i]
+            sub_clustered_tweets, sub_kmeans = cluster_tweets(sub_embeddings, sub_tweets, 2)
+
+            # Replace the old cluster with the new subclusters
+            del clustered_tweets[i]
+            clustered_tweets.update(sub_clustered_tweets)
 
     # Sort clusters
     clustered_tweets, cluster_summaries = sort_clusters(clustered_tweets, cluster_summaries)
@@ -129,11 +148,10 @@ def get_embeddings(tweets):
             embeddings.append(response["data"][0]["embedding"])
     return np.array(embeddings)
 
-def cluster_tweets(embeddings_array, tweets):
-    optimal_clusters = 10
-    kmeans = KMeans(n_clusters=optimal_clusters, random_state=0).fit(embeddings_array)
+def cluster_tweets(embeddings_array, tweets, num_clusters):
+    kmeans = KMeans(n_clusters=num_clusters, random_state=0).fit(embeddings_array)
 
-    clustered_tweets = {i: [] for i in range(optimal_clusters)}
+    clustered_tweets = {i: [] for i in range(num_clusters)}
     for i, label in enumerate(kmeans.labels_):
         clustered_tweets[label].append(tweets.data[i].text)
 
@@ -142,20 +160,27 @@ def cluster_tweets(embeddings_array, tweets):
 def generate_summary(cluster_item):
     i, tweets = cluster_item
     tweet_str = '\n'.join(tweets)
-    prompt = f"Here is a list of tweets:\n\n{tweet_str}\n\nPlease generate a summary topic for these tweets.\n\nAll these tweets are tweeting about"
-    response = openai.Completion.create(
-        model="text-davinci-002",
-        prompt=prompt,
-        temperature=0.7,
-        max_tokens=60,
-        stop="\n",
-    )
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": f"Here is a list of tweets:\n\n{tweet_str}\n\nCan you generate a 1-2 sentence summary topic for these tweets or say 'MULTIPLE TOPICS' if they are about different topics?"}
+    ]
 
-    summary = response.choices[0].text.strip()
-    if len(tweets) == 1:
-        return i, f"1 person is talking about {summary}"
-    else:
-        return i, f"{len(tweets)} people are talking about {summary}"
+    for attempt in range(1, 4):  # 3 attempts with exponential backoff
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=messages
+            )
+            summary = response.choices[0].message['content'].strip()
+            if len(tweets) == 1:
+                return i, f"1 person is talking about {summary}"
+            else:
+                return i, f"{len(tweets)} people are talking about {summary}"
+        except Exception as e:
+            wait_time = 2 ** attempt
+            logging.error(f"Error generating summary on attempt {attempt}. Retrying in {wait_time} seconds. Error: {str(e)}")
+            time.sleep(wait_time)
+    return i, "Unable to generate summary"
 
 def sort_clusters(clustered_tweets, cluster_summaries):
     clustered_tweets = dict(sorted(clustered_tweets.items(), key=lambda item: len(item[1]), reverse=True))
