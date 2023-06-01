@@ -84,6 +84,17 @@ def authorize():
     login_user(new_user)
     return redirect(url_for('tweets'))
 
+def fetch_tweets(access_token, access_token_secret):
+    client = tweepy.Client(bearer_token=environ.get("BEARER_TOKEN"), 
+                           consumer_key=environ.get('TWITTER_API_KEY'), 
+                           consumer_secret=environ.get('TWITTER_API_SECRET'), 
+                           access_token=access_token, 
+                           access_token_secret=access_token_secret)
+
+    now = datetime.now()
+    date_24_hours_ago = now - timedelta(hours=24)
+    return client.get_home_timeline(start_time=date_24_hours_ago).data
+
 @app.route('/tweets')
 @login_required
 def tweets():
@@ -116,7 +127,7 @@ def tweets():
         for i in multiple_topics_clusters:
             # Subdivide the cluster
             sub_embeddings = embeddings_array[kmeans.labels_ == i]
-            sub_tweets = [tweet for j, tweet in enumerate(tweets.data) if kmeans.labels_[j] == i]
+            sub_tweets = [tweet for j, tweet in enumerate(tweets) if kmeans.labels_[j] == i]
             sub_clustered_tweets, sub_kmeans = cluster_tweets(sub_embeddings, sub_tweets, 2)
 
             # Replace the old cluster with the new subclusters
@@ -128,21 +139,10 @@ def tweets():
 
     return render_template('tweets.html', clustered_tweets=clustered_tweets, cluster_summaries=cluster_summaries)
 
-def fetch_tweets(access_token, access_token_secret):
-    client = tweepy.Client(bearer_token=environ.get("BEARER_TOKEN"), 
-                           consumer_key=environ.get('TWITTER_API_KEY'), 
-                           consumer_secret=environ.get('TWITTER_API_SECRET'), 
-                           access_token=access_token, 
-                           access_token_secret=access_token_secret)
-
-    now = datetime.now()
-    date_24_hours_ago = now - timedelta(hours=24)
-    return client.get_home_timeline(start_time=date_24_hours_ago)
-
 def get_embeddings(tweets):
     embeddings = []
     with ThreadPoolExecutor() as executor:
-        future_to_embedding = {executor.submit(openai.Embedding.create, model="text-embedding-ada-002", input=[tweet.text]): tweet for tweet in tweets.data}
+        future_to_embedding = {executor.submit(openai.Embedding.create, model="text-embedding-ada-002", input=[tweet.text]): tweet for tweet in tweets}
         for future in concurrent.futures.as_completed(future_to_embedding):
             response = future.result()
             embeddings.append(response["data"][0]["embedding"])
@@ -153,13 +153,13 @@ def cluster_tweets(embeddings_array, tweets, num_clusters):
 
     clustered_tweets = {i: [] for i in range(num_clusters)}
     for i, label in enumerate(kmeans.labels_):
-        clustered_tweets[label].append(tweets.data[i].text)
+        clustered_tweets[label].append(tweets[i])
 
     return clustered_tweets, kmeans
 
 def generate_summary(cluster_item):
     i, tweets = cluster_item
-    tweet_str = '\n'.join(tweets)
+    tweet_str = '\n'.join([tweet.text for tweet in tweets])
     messages = [
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": f"Here is a list of tweets:\n\n{tweet_str}\n\nCan you generate a 1-2 sentence summary topic for these tweets or say 'MULTIPLE TOPICS' if they are about different topics?"}
