@@ -33,6 +33,7 @@ migrate = Migrate(app, db)
 login_manager = LoginManager()
 login_manager.init_app(app)
 
+
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(64), index=True, unique=True)
@@ -95,6 +96,67 @@ def fetch_tweets(access_token, access_token_secret):
     date_24_hours_ago = now - timedelta(hours=24)
     return client.get_home_timeline(start_time=date_24_hours_ago).data
 
+class TweetCluster:
+    def __init__(self, tweets, embeddings, summary=None):
+        self.tweets = tweets
+        self.embeddings = embeddings
+        self.summary = summary
+
+def generate_summary(cluster):
+    if cluster.summary:
+        return cluster
+
+    tweet_str = '\n'.join([tweet.text for tweet in cluster.tweets])
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": f"Here is a list of tweets:\n\n{tweet_str}\n\nCan you generate a 1-2 sentence summary topic for these tweets or say 'MULTIPLE TOPICS' if they are about different topics?"}
+    ]
+
+    for attempt in range(1, 4):  # 3 attempts with exponential backoff
+        try:
+            print('Summarizing')
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=messages
+            )
+            summary = response.choices[0].message['content'].strip()
+            if len(cluster.tweets) == 1:
+                summary = f"1 person is talking about {summary}"
+            else:
+                summary = f"{len(cluster.tweets)} people are talking about {summary}"
+            return TweetCluster(cluster.tweets, cluster.embeddings, summary)
+        except Exception as e:
+            wait_time = 2 ** attempt
+            print(f"Error generating summary on attempt {attempt}. Retrying in {wait_time} seconds. Error: {str(e)}")
+            time.sleep(wait_time)
+    return TweetCluster(cluster.tweets, cluster.embeddings, "Unable to generate summary")
+
+def subdivide(cluster):
+    # Create two new clusters
+    sub_clustered_tweets = cluster_tweets(cluster.embeddings, cluster.tweets, 2)
+    
+    return sub_clustered_tweets
+
+def process_clusters(clusters):
+    # Generate summaries for all clusters
+    with ThreadPoolExecutor() as executor:
+      clusters = list(executor.map(generate_summary, clusters))
+
+    # Identify clusters that cover multiple topics
+    multiple_topics_clusters = [cluster for cluster in clusters if 'MULTIPLE TOPICS' in cluster.summary and len(cluster.tweets) > 3]
+
+    # If there are no clusters with multiple topics, we are done
+    if not multiple_topics_clusters:
+        return clusters
+
+    # Generate a list of new clusters by subdividing clusters with multiple topics
+    new_clusters = [new_cluster for cluster in multiple_topics_clusters for new_cluster in subdivide(cluster)]
+
+    # Replace clusters with multiple topics with their subdivisions
+    clusters = [cluster for cluster in clusters if cluster not in multiple_topics_clusters] + new_clusters
+
+    return process_clusters(clusters)  # Recursively process the clusters until there are no clusters with multiple topics
+
 @app.route('/tweets')
 @login_required
 def tweets():
@@ -110,34 +172,15 @@ def tweets():
 
     # Convert tweets to embeddings and cluster them
     embeddings_array = get_embeddings(tweets)
-    clustered_tweets, kmeans = cluster_tweets(embeddings_array, tweets, 10)
+    clusters = cluster_tweets(embeddings_array, tweets, 10)
 
-    # Generate summaries and subdivide clusters as necessary
-    while True:
-        with ThreadPoolExecutor() as executor:
-            cluster_summaries = executor.map(generate_summary, clustered_tweets.items())
-            cluster_summaries = dict(cluster_summaries)
-
-        # Check if there are clusters with "MULTIPLE TOPICS"
-        multiple_topics_clusters = [i for i, summary in cluster_summaries.items() if 'MULTIPLE TOPICS' in summary]
-
-        if not multiple_topics_clusters:
-            break
-
-        for i in multiple_topics_clusters:
-            # Subdivide the cluster
-            sub_embeddings = embeddings_array[kmeans.labels_ == i]
-            sub_tweets = [tweet for j, tweet in enumerate(tweets) if kmeans.labels_[j] == i]
-            sub_clustered_tweets, sub_kmeans = cluster_tweets(sub_embeddings, sub_tweets, 2)
-
-            # Replace the old cluster with the new subclusters
-            del clustered_tweets[i]
-            clustered_tweets.update(sub_clustered_tweets)
+    # Process clusters until there are no clusters with multiple topics
+    clusters = process_clusters(clusters)
 
     # Sort clusters
-    clustered_tweets, cluster_summaries = sort_clusters(clustered_tweets, cluster_summaries)
+    clusters.sort(key=lambda cluster: len(cluster.tweets), reverse=True)
 
-    return render_template('tweets.html', clustered_tweets=clustered_tweets, cluster_summaries=cluster_summaries)
+    return render_template('tweets.html', clusters=clusters)
 
 def get_embeddings(tweets):
     embeddings = []
@@ -151,42 +194,14 @@ def get_embeddings(tweets):
 def cluster_tweets(embeddings_array, tweets, num_clusters):
     kmeans = KMeans(n_clusters=num_clusters, random_state=0).fit(embeddings_array)
 
-    clustered_tweets = {i: [] for i in range(num_clusters)}
-    for i, label in enumerate(kmeans.labels_):
-        clustered_tweets[label].append(tweets[i])
+    clusters = []
+    for i in range(num_clusters):
+        indices = np.where(kmeans.labels_ == i)[0]
+        cluster_tweets = [tweets[j] for j in indices]
+        cluster_embeddings = embeddings_array[indices]
+        clusters.append(TweetCluster(cluster_tweets, cluster_embeddings))
 
-    return clustered_tweets, kmeans
-
-def generate_summary(cluster_item):
-    i, tweets = cluster_item
-    tweet_str = '\n'.join([tweet.text for tweet in tweets])
-    messages = [
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": f"Here is a list of tweets:\n\n{tweet_str}\n\nCan you generate a 1-2 sentence summary topic for these tweets or say 'MULTIPLE TOPICS' if they are about different topics?"}
-    ]
-
-    for attempt in range(1, 4):  # 3 attempts with exponential backoff
-        try:
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=messages
-            )
-            summary = response.choices[0].message['content'].strip()
-            if len(tweets) == 1:
-                return i, f"1 person is talking about {summary}"
-            else:
-                return i, f"{len(tweets)} people are talking about {summary}"
-        except Exception as e:
-            wait_time = 2 ** attempt
-            logging.error(f"Error generating summary on attempt {attempt}. Retrying in {wait_time} seconds. Error: {str(e)}")
-            time.sleep(wait_time)
-    return i, "Unable to generate summary"
-
-def sort_clusters(clustered_tweets, cluster_summaries):
-    clustered_tweets = dict(sorted(clustered_tweets.items(), key=lambda item: len(item[1]), reverse=True))
-    cluster_summaries = dict(sorted(cluster_summaries.items(), key=lambda item: len(clustered_tweets[item[0]]), reverse=True))
-    return clustered_tweets, cluster_summaries
-
+    return clusters
 
 if __name__ == '__main__':
     app.run(debug=True)
