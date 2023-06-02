@@ -11,8 +11,7 @@ import time
 import tweepy
 import openai
 import numpy as np
-from sklearn.cluster import KMeans
-from sklearn.manifold import TSNE
+from sklearn.metrics.pairwise import cosine_similarity
 import matplotlib.pyplot as plt
 from concurrent.futures import ThreadPoolExecutor
 import concurrent
@@ -97,65 +96,67 @@ def fetch_tweets(access_token, access_token_secret):
     return client.get_home_timeline(start_time=date_24_hours_ago).data
 
 class TweetCluster:
-    def __init__(self, tweets, embeddings, summary=None):
-        self.tweets = tweets
-        self.embeddings = embeddings
+    def __init__(self, summary=None, example=None, tweets=None, description=None):
+        self.tweets = tweets or []
         self.summary = summary
+        self.description = description
+        self.example = example
 
-def generate_summary(cluster):
-    if cluster.summary:
-        return cluster
+SUMMARY_PROMPT = """"Please produce a list of up to 10 topics that are being discussed in these tweets, and give an example of each. Please format the results as
 
-    tweet_str = '\n'.join([tweet.text for tweet in cluster.tweets])
+TOPIC: first topic summary
+TOPIC DESCRIPTION: 1-2 sentence description
+EXAMPLE: example tweet
+
+TOPIC: second topic summary
+TOPIC DESCRIPTION: 1-2 sentence description
+EXAMPLE: example tweet"""
+
+def parse_topics(input_string):
+    print(input_string)
+    results = []
+    current_topic = None
+    current_description = None
+    current_example = None
+
+    # TODO - multiple line examples???
+    lines = input_string.strip().split('\n')
+    for line in lines:
+        line = line.strip()
+        if line.startswith('TOPIC:'):
+            if current_topic:
+              results.append(TweetCluster(summary=current_topic, description=current_description, example=current_example))
+            current_topic = line.replace('TOPIC:', '').strip()
+        if line.startswith('TOPIC DESCRIPTION:'):
+            current_description = line.replace('TOPIC DESCRIPTION:', '').strip()
+        elif line.startswith('EXAMPLE:'):
+            current_example = line.replace('EXAMPLE:', '').strip()
+
+    results.append(TweetCluster(summary=current_topic, description=current_description, example=current_example))
+
+    return results
+
+def generate_topics(tweets):
+    # TODO actually count tokens, or reduce the # tweets we send using embeddings somehow...
+    tweet_str = '\n'.join([tweet.text for tweet in tweets])
+    tweet_str = tweet_str[:10000]
     messages = [
         {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": f"Here is a list of tweets:\n\n{tweet_str}\n\nCan you generate a 1-2 sentence summary topic for these tweets or say 'MULTIPLE TOPICS' if they are about different topics?"}
+        {"role": "user", "content": f"Here is a list of tweets:\n\n<TWEETS>\n\n{tweet_str}\n\n</TWEETS>\n\n{SUMMARY_PROMPT}"}
     ]
 
     for attempt in range(1, 4):  # 3 attempts with exponential backoff
         try:
-            print('Summarizing')
             response = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
                 messages=messages
             )
-            summary = response.choices[0].message['content'].strip()
-            if len(cluster.tweets) == 1:
-                summary = f"1 person is talking about {summary}"
-            else:
-                summary = f"{len(cluster.tweets)} people are talking about {summary}"
-            return TweetCluster(cluster.tweets, cluster.embeddings, summary)
+            response_text = response.choices[0].message['content'].strip()
+            return parse_topics(response_text)
         except Exception as e:
             wait_time = 2 ** attempt
-            print(f"Error generating summary on attempt {attempt}. Retrying in {wait_time} seconds. Error: {str(e)}")
+            print(f"Error generating topics on attempt {attempt}. Retrying in {wait_time} seconds. Error: {str(e)}")
             time.sleep(wait_time)
-    return TweetCluster(cluster.tweets, cluster.embeddings, "Unable to generate summary")
-
-def subdivide(cluster):
-    # Create two new clusters
-    sub_clustered_tweets = cluster_tweets(cluster.embeddings, cluster.tweets, 2)
-    
-    return sub_clustered_tweets
-
-def process_clusters(clusters):
-    # Generate summaries for all clusters
-    with ThreadPoolExecutor() as executor:
-      clusters = list(executor.map(generate_summary, clusters))
-
-    # Identify clusters that cover multiple topics
-    multiple_topics_clusters = [cluster for cluster in clusters if 'MULTIPLE TOPICS' in cluster.summary and len(cluster.tweets) > 3]
-
-    # If there are no clusters with multiple topics, we are done
-    if not multiple_topics_clusters:
-        return clusters
-
-    # Generate a list of new clusters by subdividing clusters with multiple topics
-    new_clusters = [new_cluster for cluster in multiple_topics_clusters for new_cluster in subdivide(cluster)]
-
-    # Replace clusters with multiple topics with their subdivisions
-    clusters = [cluster for cluster in clusters if cluster not in multiple_topics_clusters] + new_clusters
-
-    return process_clusters(clusters)  # Recursively process the clusters until there are no clusters with multiple topics
 
 @app.route('/tweets')
 @login_required
@@ -170,36 +171,35 @@ def tweets():
     # Set up the OpenAI API client
     openai.api_key = environ.get('OPENAI_API_KEY')
 
-    # Convert tweets to embeddings and cluster them
-    embeddings_array = get_embeddings(tweets)
-    clusters = cluster_tweets(embeddings_array, tweets, 10)
+    # Generate topics
+    clusters = generate_topics(tweets)
 
-    # Process clusters until there are no clusters with multiple topics
-    clusters = process_clusters(clusters)
+    # Cluster tweets according to similarity with examples
+    clusters = cluster_tweets(tweets, clusters)
 
     # Sort clusters
     clusters.sort(key=lambda cluster: len(cluster.tweets), reverse=True)
 
     return render_template('tweets.html', clusters=clusters)
 
-def get_embeddings(tweets):
-    embeddings = []
+def get_embedding(text):
+    response = openai.Embedding.create(model="text-embedding-ada-002", input=[text])
+    return response["data"][0]["embedding"]
+
+def get_embeddings(texts):
     with ThreadPoolExecutor() as executor:
-        future_to_embedding = {executor.submit(openai.Embedding.create, model="text-embedding-ada-002", input=[tweet.text]): tweet for tweet in tweets}
-        for future in concurrent.futures.as_completed(future_to_embedding):
-            response = future.result()
-            embeddings.append(response["data"][0]["embedding"])
+        embeddings = list(executor.map(get_embedding, texts))
     return np.array(embeddings)
 
-def cluster_tweets(embeddings_array, tweets, num_clusters):
-    kmeans = KMeans(n_clusters=num_clusters, random_state=0).fit(embeddings_array)
+def cluster_tweets(tweets, clusters):
+    # Convert tweets to embeddings and cluster them
+    embeddings_array = get_embeddings([tweet.text for tweet in tweets])
+    example_embeddings = get_embeddings([cluster.example for cluster in clusters])
 
-    clusters = []
-    for i in range(num_clusters):
-        indices = np.where(kmeans.labels_ == i)[0]
-        cluster_tweets = [tweets[j] for j in indices]
-        cluster_embeddings = embeddings_array[indices]
-        clusters.append(TweetCluster(cluster_tweets, cluster_embeddings))
+    for idx, tweet_embedding in enumerate(embeddings_array):
+        similarity_scores = cosine_similarity([tweet_embedding], example_embeddings)
+        most_similar_cluster_index = np.argmax(similarity_scores)
+        clusters[most_similar_cluster_index].tweets.append(tweets[idx])
 
     return clusters
 
