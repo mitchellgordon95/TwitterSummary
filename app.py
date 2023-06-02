@@ -16,6 +16,7 @@ from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
 from concurrent.futures import ThreadPoolExecutor
 import concurrent
+import re
 
 
 DEBUG = False
@@ -85,6 +86,28 @@ def authorize():
     login_user(new_user)
     return redirect(url_for('tweets'))
 
+tweet_fields = ["text", "referenced_tweets", "author_id", "conversation_id"]
+expansions = ["referenced_tweets.id"]
+
+def expand_retweets(tweet, include_tweets, client):
+    # Remove included retweet text, we'll add it later
+    tweet_text = re.sub(r'\bRT\b.*', '', tweet.text)
+
+    if not tweet.referenced_tweets:
+        return tweet_text
+    else:
+        retweet_id = tweet.referenced_tweets[0].id
+        retweet = next((retweet for retweet in include_tweets if retweet.id == retweet_id), None)
+        if not retweet:
+            response = client.get_tweet(retweet_id, tweet_fields=tweet_fields, expansions=expansions)
+            retweet = response.data
+            includ_tweets = response.includes.get('tweets')
+        if retweet:
+            return tweet_text + f"<RETWEET>\n{expand_retweets(retweet, include_tweets, client)}\n</RETWEET>"
+        else:
+            return tweet_text
+
+
 def fetch_tweets(access_token, access_token_secret):
     client = tweepy.Client(bearer_token=environ.get("BEARER_TOKEN"), 
                            consumer_key=environ.get('TWITTER_API_KEY'), 
@@ -94,7 +117,23 @@ def fetch_tweets(access_token, access_token_secret):
 
     now = datetime.now()
     date_24_hours_ago = now - timedelta(hours=24)
-    return client.get_home_timeline(start_time=date_24_hours_ago).data
+
+
+    # fetch the tweets
+    response = client.get_home_timeline(start_time=date_24_hours_ago, tweet_fields=tweet_fields, expansions=expansions)
+
+    # create a dictionary to store the collapsed tweets
+    collapsed_tweets = {}
+
+    for tweet in response.data:
+
+        # if this tweet is part of a conversation we've seen before, append it to the existing tweet
+        if tweet.conversation_id in collapsed_tweets:
+            collapsed_tweets[tweet.conversation_id] += "\n" + expand_retweets(tweet, response.includes['tweets'], client)
+        else:
+            collapsed_tweets[tweet.conversation_id] = expand_retweets(tweet, response.includes['tweets'], client)
+
+    return list(collapsed_tweets.values())
 
 class TweetCluster:
     def __init__(self, tweets, embeddings, summary=None):
@@ -106,10 +145,12 @@ def generate_summary(cluster):
     if cluster.summary:
         return cluster
 
-    tweet_str = '\n'.join([tweet.text for tweet in cluster.tweets])
+    tweet_str = '\n'.join([f'<TWEET>{tweet}</TWEET>' for tweet in cluster.tweets])
+    # TODO - count tokens
+    tweet_str = tweet_str[:10000]
     messages = [
         {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": f"Here is a list of tweets:\n\n{tweet_str}\n\nCan you generate a 1-2 sentence summary topic for these tweets or say 'MULTIPLE TOPICS' if they are about different topics?"}
+        {"role": "user", "content": f"Here is a list of tweets:\n\n<TWEETS>\n\n{tweet_str}\n\n</TWEETS>\n\nPlease generate a short summary of what these tweets are talking about."}
     ]
 
     for attempt in range(1, 4):  # 3 attempts with exponential backoff
@@ -120,10 +161,8 @@ def generate_summary(cluster):
                 messages=messages
             )
             summary = response.choices[0].message['content'].strip()
-            if len(cluster.tweets) == 1:
-                summary = f"1 person is talking about {summary}"
-            else:
-                summary = f"{len(cluster.tweets)} people are talking about {summary}"
+            if summary.count('.') > 2 and len(cluster.tweets) > 3:
+                summary = "MULTIPLE TOPICS"
             return TweetCluster(cluster.tweets, cluster.embeddings, summary)
         except Exception as e:
             wait_time = 2 ** attempt
@@ -182,13 +221,13 @@ def tweets():
 
     return render_template('tweets.html', clusters=clusters)
 
+def get_embedding(tweet):
+    response = openai.Embedding.create(model="text-embedding-ada-002", input=[tweet])
+    return response["data"][0]["embedding"]
+
 def get_embeddings(tweets):
-    embeddings = []
     with ThreadPoolExecutor() as executor:
-        future_to_embedding = {executor.submit(openai.Embedding.create, model="text-embedding-ada-002", input=[tweet.text]): tweet for tweet in tweets}
-        for future in concurrent.futures.as_completed(future_to_embedding):
-            response = future.result()
-            embeddings.append(response["data"][0]["embedding"])
+        embeddings = list(executor.map(get_embedding, tweets))
     return np.array(embeddings)
 
 def cluster_tweets(embeddings_array, tweets, num_clusters):
