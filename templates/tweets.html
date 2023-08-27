@@ -9,7 +9,7 @@
         <details>
             <summary>({{cluster.tweets | length}}) {{ cluster.summary }}</summary>
             {% for tweet in cluster.tweets %}
-                <p>{{ tweet.text }}</p>
+                <p>{{ tweet }}</p>
             {% endfor %}
         </details>
         <br>

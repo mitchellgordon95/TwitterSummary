@@ -2,22 +2,15 @@ from flask import session, Flask, redirect, url_for, request, render_template
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
-from tweepy import OAuthHandler, API
+import tweepy
 from os import environ
 from dotenv import load_dotenv
-from datetime import datetime, timedelta
 import logging
-import time
-import tweepy
-import openai
 import numpy as np
-from sklearn.cluster import KMeans
-from sklearn.manifold import TSNE
-import matplotlib.pyplot as plt
-from concurrent.futures import ThreadPoolExecutor
-import concurrent
-import re
+import openai
 
+from twitter import fetch_tweets
+from clustering import cluster_tweets, TweetCluster
 
 DEBUG = False
 
@@ -33,7 +26,6 @@ migrate = Migrate(app, db)
 
 login_manager = LoginManager()
 login_manager.init_app(app)
-
 
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -86,161 +78,27 @@ def authorize():
     login_user(new_user)
     return redirect(url_for('tweets'))
 
-tweet_fields = ["text", "referenced_tweets", "author_id", "conversation_id"]
-expansions = ["referenced_tweets.id"]
-
-def expand_retweets(tweet, include_tweets, client):
-    # Remove included retweet text, we'll add it later
-    tweet_text = re.sub(r'\bRT\b.*', '', tweet.text)
-
-    if not tweet.referenced_tweets:
-        return tweet_text
-    else:
-        retweet_id = tweet.referenced_tweets[0].id
-        retweet = next((retweet for retweet in include_tweets if retweet.id == retweet_id), None)
-        if not retweet:
-            response = client.get_tweet(retweet_id, tweet_fields=tweet_fields, expansions=expansions)
-            retweet = response.data
-            includ_tweets = response.includes.get('tweets')
-        if retweet:
-            return tweet_text + f"<RETWEET>\n{expand_retweets(retweet, include_tweets, client)}\n</RETWEET>"
-        else:
-            return tweet_text
-
-
-def fetch_tweets(access_token, access_token_secret):
-    client = tweepy.Client(bearer_token=environ.get("BEARER_TOKEN"), 
-                           consumer_key=environ.get('TWITTER_API_KEY'), 
-                           consumer_secret=environ.get('TWITTER_API_SECRET'), 
-                           access_token=access_token, 
-                           access_token_secret=access_token_secret)
-
-    now = datetime.now()
-    date_24_hours_ago = now - timedelta(hours=24)
-
-
-    # fetch the tweets
-    response = client.get_home_timeline(start_time=date_24_hours_ago, tweet_fields=tweet_fields, expansions=expansions)
-
-    # create a dictionary to store the collapsed tweets
-    collapsed_tweets = {}
-
-    for tweet in response.data:
-
-        # if this tweet is part of a conversation we've seen before, append it to the existing tweet
-        if tweet.conversation_id in collapsed_tweets:
-            collapsed_tweets[tweet.conversation_id] += "\n" + expand_retweets(tweet, response.includes['tweets'], client)
-        else:
-            collapsed_tweets[tweet.conversation_id] = expand_retweets(tweet, response.includes['tweets'], client)
-
-    return list(collapsed_tweets.values())
-
-class TweetCluster:
-    def __init__(self, tweets, embeddings, summary=None):
-        self.tweets = tweets
-        self.embeddings = embeddings
-        self.summary = summary
-
-def generate_summary(cluster):
-    if cluster.summary:
-        return cluster
-
-    tweet_str = '\n'.join([f'<TWEET>{tweet}</TWEET>' for tweet in cluster.tweets])
-    # TODO - count tokens
-    tweet_str = tweet_str[:10000]
-    messages = [
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": f"Here is a list of tweets:\n\n<TWEETS>\n\n{tweet_str}\n\n</TWEETS>\n\nPlease generate a short summary of what these tweets are talking about."}
-    ]
-
-    for attempt in range(1, 4):  # 3 attempts with exponential backoff
-        try:
-            print('Summarizing')
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=messages
-            )
-            summary = response.choices[0].message['content'].strip()
-            if summary.count('.') > 2 and len(cluster.tweets) > 3:
-                summary = "MULTIPLE TOPICS"
-            return TweetCluster(cluster.tweets, cluster.embeddings, summary)
-        except Exception as e:
-            wait_time = 2 ** attempt
-            print(f"Error generating summary on attempt {attempt}. Retrying in {wait_time} seconds. Error: {str(e)}")
-            time.sleep(wait_time)
-    return TweetCluster(cluster.tweets, cluster.embeddings, "Unable to generate summary")
-
-def subdivide(cluster):
-    # Create two new clusters
-    sub_clustered_tweets = cluster_tweets(cluster.embeddings, cluster.tweets, 2)
-    
-    return sub_clustered_tweets
-
-def process_clusters(clusters):
-    # Generate summaries for all clusters
-    with ThreadPoolExecutor() as executor:
-      clusters = list(executor.map(generate_summary, clusters))
-
-    # Identify clusters that cover multiple topics
-    multiple_topics_clusters = [cluster for cluster in clusters if 'MULTIPLE TOPICS' in cluster.summary and len(cluster.tweets) > 3]
-
-    # If there are no clusters with multiple topics, we are done
-    if not multiple_topics_clusters:
-        return clusters
-
-    # Generate a list of new clusters by subdividing clusters with multiple topics
-    new_clusters = [new_cluster for cluster in multiple_topics_clusters for new_cluster in subdivide(cluster)]
-
-    # Replace clusters with multiple topics with their subdivisions
-    clusters = [cluster for cluster in clusters if cluster not in multiple_topics_clusters] + new_clusters
-
-    return process_clusters(clusters)  # Recursively process the clusters until there are no clusters with multiple topics
-
 @app.route('/tweets')
 @login_required
 def tweets():
     # Get Twitter API credentials
     access_token = current_user.access_token
     access_token_secret = current_user.access_token_secret
+    print(access_token)
+    print(access_token_secret)
 
     # Fetch tweets
     tweets = fetch_tweets(access_token, access_token_secret)
+    print(tweets)
 
     # Set up the OpenAI API client
     openai.api_key = environ.get('OPENAI_API_KEY')
 
-    # Convert tweets to embeddings and cluster them
-    embeddings_array = get_embeddings(tweets)
-    clusters = cluster_tweets(embeddings_array, tweets, 10)
-
-    # Process clusters until there are no clusters with multiple topics
-    clusters = process_clusters(clusters)
-
-    # Sort clusters
-    clusters.sort(key=lambda cluster: len(cluster.tweets), reverse=True)
+    # Cluster tweets and summarize
+    clusters = cluster_tweets(tweets)
 
     return render_template('tweets.html', clusters=clusters)
 
-def get_embedding(tweet):
-    response = openai.Embedding.create(model="text-embedding-ada-002", input=[tweet])
-    return response["data"][0]["embedding"]
-
-def get_embeddings(tweets):
-    with ThreadPoolExecutor() as executor:
-        embeddings = list(executor.map(get_embedding, tweets))
-    return np.array(embeddings)
-
-def cluster_tweets(embeddings_array, tweets, num_clusters):
-    kmeans = KMeans(n_clusters=num_clusters, random_state=0).fit(embeddings_array)
-
-    clusters = []
-    for i in range(num_clusters):
-        indices = np.where(kmeans.labels_ == i)[0]
-        cluster_tweets = [tweets[j] for j in indices]
-        cluster_embeddings = embeddings_array[indices]
-        clusters.append(TweetCluster(cluster_tweets, cluster_embeddings))
-
-    return clusters
 
 if __name__ == '__main__':
     app.run(debug=True)
