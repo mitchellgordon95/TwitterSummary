@@ -55,7 +55,9 @@ def fetch_tweets(access_token, access_token_secret):
         expanded_text, thread_ids = expand_retweets(tweet, response.includes['tweets'], client)
         # if this tweet is part of a conversation we've seen before, append it to the existing tweet
         if tweet.conversation_id in collapsed_tweets:
-            collapsed_tweets[tweet.conversation_id] += "\n" + expanded_text
+            # TODO (mitchg) - not sure why we have to check this to prevent duplication
+            if expanded_text not in collapsed_tweets[tweet.conversation_id]:
+              collapsed_tweets[tweet.conversation_id] += "\n" + expanded_text
             convo_thread_ids[tweet.conversation_id].extend(thread_ids)
         else:
             collapsed_tweets[tweet.conversation_id] = expanded_text
