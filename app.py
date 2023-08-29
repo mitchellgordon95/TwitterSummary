@@ -10,7 +10,7 @@ import numpy as np
 import openai
 
 from twitter import fetch_tweets
-from clustering import cluster_tweets, TweetCluster
+from clustering import cluster_threads, TweetCluster
 
 DEBUG = False
 
@@ -84,18 +84,15 @@ def tweets():
     # Get Twitter API credentials
     access_token = current_user.access_token
     access_token_secret = current_user.access_token_secret
-    print(access_token)
-    print(access_token_secret)
 
     # Fetch tweets
-    tweets = fetch_tweets(access_token, access_token_secret)
-    print(tweets)
+    threads = fetch_tweets(access_token, access_token_secret)
 
     # Set up the OpenAI API client
     openai.api_key = environ.get('OPENAI_API_KEY')
 
     # Cluster tweets and summarize
-    clusters = cluster_tweets(tweets)
+    clusters = cluster_threads(threads)
 
     return render_template('tweets.html', clusters=clusters)
 

@@ -1,16 +1,17 @@
 import openai
+from twitter import Thread
 from concurrent.futures import ThreadPoolExecutor
 
 class TweetCluster:
-    def __init__(self, tweets, summary=None):
-        self.tweets = tweets
+    def __init__(self, threads, summary=None):
+        self.threads = threads
         self.summary = summary
 
 def generate_summary(cluster):
     if cluster.summary:
         return cluster
 
-    tweet_str = '\n'.join([f'<TWEET>{tweet}</TWEET>' for tweet in cluster.tweets])
+    tweet_str = '\n'.join([f'<TWEET>{tweet}</TWEET>' for tweet in cluster.threads])
     # TODO - count tokens
     tweet_str = tweet_str[:10000]
     messages = [
@@ -26,17 +27,17 @@ def generate_summary(cluster):
                 messages=messages
             )
             summary = response.choices[0].message['content'].strip()
-            if summary.count('.') > 2 and len(cluster.tweets) > 3:
+            if summary.count('.') > 2 and len(cluster.threads) > 3:
                 summary = "MULTIPLE TOPICS"
-            return TweetCluster(cluster.tweets, summary)
+            return TweetCluster(cluster.threads, summary)
         except Exception as e:
             wait_time = 2 ** attempt
             print(f"Error generating summary on attempt {attempt}. Retrying in {wait_time} seconds. Error: {str(e)}")
             time.sleep(wait_time)
-    return TweetCluster(cluster.tweets, "Unable to generate summary")
+    return TweetCluster(cluster.threads, "Unable to generate summary")
 
-def cluster_tweets(tweets):
+def cluster_threads(threads):
     clusters = []
-    clusters.append(TweetCluster(tweets, summary="One big cluster"))
+    clusters.append(TweetCluster(threads, summary="One big cluster"))
 
     return clusters
