@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 import logging
 import numpy as np
 import openai
+import pickle
 
 from twitter import fetch_tweets
 from clustering import cluster_threads, TweetCluster
@@ -86,7 +87,11 @@ def tweets():
     access_token_secret = current_user.access_token_secret
 
     # Fetch tweets
-    threads = fetch_tweets(access_token, access_token_secret)
+    # threads = fetch_tweets(access_token, access_token_secret)
+    # with open('tweets.pkl', 'wb') as file_:
+    #   pickle.dump(threads, file_)
+    with open('tweets.pkl', 'rb') as file_:
+      threads = pickle.load(file_)
 
     # Set up the OpenAI API client
     openai.api_key = environ.get('OPENAI_API_KEY')
