@@ -10,9 +10,9 @@
             <summary>({{cluster.threads | length}}) {{ cluster.summary }}</summary>
             {% for thread in cluster.threads %}
                 <p>{{ thread.text }}</p>
-                {% for id in thread.thread_ids %}
-                  <p>{{id}}</p>
-                {% endfor %}
+                <!-- {% for id in thread.thread_ids %} -->
+                <!--   <p>{{id}}</p> -->
+                <!-- {% endfor %} -->
             {% endfor %}
         </details>
         <br>
