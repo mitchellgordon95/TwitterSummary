@@ -38,6 +38,8 @@ def generate_summary(cluster):
     return response.choices[0].message['content'].strip()
 
   summary = with_retries(get_summary, "API error")
+  summary = summary.strip()
+  summary = summary.strip('"')
 
   return TweetCluster(cluster.threads, hashtags=cluster.hashtags, summary=summary)
 

@@ -123,6 +123,6 @@ def cluster_threads(threads):
       found = found or h in thread.hashtags
     if not found:
       misc.append(thread)
-  clusters.append(TweetCluster(misc, summary="misc"))
+  clusters.append(TweetCluster(misc, hashtags=[], summary="misc"))
 
   return clusters

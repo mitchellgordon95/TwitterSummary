@@ -7,7 +7,7 @@
     <h1>Tweets from last 24 hours</h1>
     {% for cluster in clusters %}
         <details>
-            <summary>({{cluster.threads | length}}) {{ cluster.summary }}</summary>
+            <summary>{{ cluster.summary }} {{ cluster.hashtags | join(' ')}}</summary>
             {% for thread in cluster.threads %}
                 <p>{{ thread.text }}</p>
                 <!-- {% for id in thread.thread_ids %} -->
