@@ -2,7 +2,7 @@
 <details>
     <summary>({{ cluster.num_tweets }}) {{ cluster.summary }}</summary>
     {% if cluster.subclusters %}
-        <div style="margin-left: 20px">
+        <div style="margin-left: 20px;margin-top: 20px">
             {% for subcluster in cluster.subclusters %}
                 {{render_cluster(subcluster)}}
             {% endfor %}
@@ -11,14 +11,14 @@
         <div class="tweets-container" style="display:flex">
             {% for thread in cluster.threads %}
             <blockquote class="twitter-tweet">
-                <a href="https://twitter.com/username/status/{{thread.thread_ids[0]}}"></a> 
+                <a href="https://twitter.com/username/status/{{thread.thread_ids[0]}}">Loading...</a> 
             </blockquote>
             {% endfor %}
         </div>
-        {% for thread in cluster.threads %}
-            <div>{{thread.text}}</div>
-            </br>
-        {% endfor %}
+        <!-- {% for thread in cluster.threads %} -->
+        <!--     <div>{{thread.text}}</div> -->
+        <!--     </br> -->
+        <!-- {% endfor %} -->
     {% endif %}
 </details>
 <br>
