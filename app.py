@@ -11,7 +11,7 @@ import openai
 import pickle
 
 from twitter import fetch_tweets
-from clustering import cluster_threads, TweetCluster
+from clustering import cluster_threads, meta_cluster
 from summary import summarize_clusters
 
 DEBUG = False
@@ -100,6 +100,7 @@ def tweets():
     # Cluster tweets and summarize
     clusters = cluster_threads(threads)
     clusters = summarize_clusters(clusters)
+    clusters = meta_cluster(clusters)
 
     return render_template('tweets.html', clusters=clusters)
 

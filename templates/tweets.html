@@ -1,3 +1,29 @@
+{% macro render_cluster(cluster) %}
+<details>
+    <summary>({{ cluster.num_tweets }}) {{ cluster.summary }} {{cluster.hashtags}}</summary>
+    {% if cluster.subclusters %}
+        <div style="margin-left: 20px">
+            {% for subcluster in cluster.subclusters %}
+                {{render_cluster(subcluster)}}
+            {% endfor %}
+        </div>
+    {% else %} 
+        <div class="tweets-container" style="display:flex">
+            {% for thread in cluster.threads %}
+            <blockquote class="twitter-tweet">
+                <a href="https://twitter.com/username/status/{{thread.thread_ids[0]}}"></a> 
+            </blockquote>
+            {% endfor %}
+        </div>
+        {% for thread in cluster.threads %}
+            <div>{{thread.text}}</div>
+            </br>
+        {% endfor %}
+    {% endif %}
+</details>
+<br>
+{% endmacro %}
+
 <!DOCTYPE html>
 <html>
 <head>
@@ -7,21 +33,7 @@
     <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script> 
     <h1>Tweets from last 24 hours</h1>
     {% for cluster in clusters %}
-        <details>
-            <summary>({{ cluster.threads | length }}) {{ cluster.summary }} {{cluster.hashtags}}</summary>
-            <div class="tweets-container" style="display:flex">
-              {% for thread in cluster.threads %}
-                <blockquote class="twitter-tweet">
-                  <a href="https://twitter.com/username/status/{{thread.thread_ids[0]}}"></a> 
-                </blockquote>
-              {% endfor %}
-            </div>
-            {% for thread in cluster.threads %}
-              <div>{{thread.text}}</div>
-              </br>
-            {% endfor %}
-        </details>
-        <br>
+      {{render_cluster(cluster)}}
     {% endfor %}
 </body>
 </html>

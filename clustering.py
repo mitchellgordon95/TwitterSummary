@@ -14,10 +14,19 @@ class HashtagsThread:
     self.hashtags = hashtags
 
 class TweetCluster:
-  def __init__(self, threads, hashtags=None, summary=None):
+  def __init__(self, threads, hashtags=None, summary=None, subclusters=[]):
     self.threads = threads
     self.hashtags = hashtags
     self.summary = summary
+    self.subclusters = subclusters or []
+
+  @property
+  def num_tweets(self):
+    count = len(self.threads)
+    if self.subclusters:
+      for cluster in self.subclusters:
+        count += cluster.num_tweets
+    return count
 
 def with_retries(func, err_return):
   for attempt in range(1, 4):  # 3 attempts with exponential backoff
@@ -63,7 +72,7 @@ def add_hashtags(thread):
   return HashtagsThread(thread, hashtags)
 
 
-def count_hashtags(threads):
+def count_hashtags(threads : HashtagsThread | TweetCluster):
   hashtag_counter = Counter()
   for thread in threads:
     for h in thread.hashtags:
@@ -134,3 +143,21 @@ def cluster_threads(threads):
   clusters.append(TweetCluster(misc, hashtags=[], summary="misc"))
 
   return clusters
+
+
+def meta_cluster(clusters):
+  hashtag_counter = count_hashtags(clusters)
+  meta_clusters = []
+  clusters = set(clusters)
+  for hashtag, _ in hashtag_counter.most_common():
+    relevant_clusters = set([c for c in clusters if hashtag in c.hashtags])
+    clusters -= relevant_clusters
+    if len(relevant_clusters) == 1:
+      meta_clusters.append(list(relevant_clusters)[0])
+    elif len(relevant_clusters) > 1:
+      meta_cluster_hashtags = count_hashtags(relevant_clusters)
+      meta_cluster_pivot_hashtags = [h for h, count in meta_cluster_hashtags.most_common()
+                            if count > len(relevant_clusters) / 2]
+      meta_clusters.append(TweetCluster([], hashtags=meta_cluster_pivot_hashtags, subclusters=relevant_clusters))
+
+  return meta_clusters
