@@ -8,7 +8,7 @@
     <h1>Tweets from last 24 hours</h1>
     {% for cluster in clusters %}
         <details>
-            <summary>({{ cluster.threads | length }}) {{ cluster.summary }}</summary>
+            <summary>({{ cluster.threads | length }}) {{ cluster.summary }} {{cluster.hashtags}}</summary>
             <div class="tweets-container" style="display:flex">
               {% for thread in cluster.threads %}
                 <blockquote class="twitter-tweet">
@@ -16,6 +16,10 @@
                 </blockquote>
               {% endfor %}
             </div>
+            {% for thread in cluster.threads %}
+              <div>{{thread.text}}</div>
+              </br>
+            {% endfor %}
         </details>
         <br>
     {% endfor %}

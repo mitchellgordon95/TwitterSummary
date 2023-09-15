@@ -71,6 +71,35 @@ def count_hashtags(threads):
   return hashtag_counter
 
 
+def pack_cluster(relevant_threads, threads, hashtag):
+  # Grab more threads that seem relevant until we hit 7
+  all_cluster_hashtags = count_hashtags(relevant_threads)
+  pivot_hashtags = set([hashtag])
+  while len(relevant_threads) < 7:
+    found = False
+    for c_hashtag, _ in all_cluster_hashtags.most_common():
+      try:
+        another_relevant_thread = next(iter([thread for thread in threads if c_hashtag in thread.hashtags]))
+      except Exception:
+        continue
+
+      found = True
+      pivot_hashtags.add(c_hashtag)
+      relevant_threads.add(another_relevant_thread)
+      threads.remove(another_relevant_thread)
+      break
+
+    if not found:
+      break
+
+  # Also add hashtags that most threads have, but were not originally
+  # used to pivot
+  all_cluster_hashtags = count_hashtags(relevant_threads)
+  pivot_hashtags.update([h for h, count in all_cluster_hashtags.most_common()
+                         if count > len(relevant_threads) / 2])
+  return pivot_hashtags
+
+
 def cluster_threads(threads):
   # with ThreadPoolExecutor(max_workers=100) as executor:
   #   threads = list(executor.map(add_hashtags, threads))
@@ -82,45 +111,24 @@ def cluster_threads(threads):
   hashtag_counter = count_hashtags(threads)
 
   clusters = []
-  used_hashtags = set()
   threads = set(threads)
   for hashtag, _ in hashtag_counter.most_common():
     relevant_threads = set([thread for thread in threads if hashtag in thread.hashtags])
     if len(relevant_threads) < 8:
-      used_hashtags.add(hashtag)
       threads = threads - relevant_threads
-
-      # Grab more threads that seem relevant until we hit 7
-      all_cluster_hashtags = count_hashtags(relevant_threads)
-      used_cluster_hashtags = set([hashtag])
-      while len(relevant_threads) < 7:
-        found = False
-        for c_hashtag, _ in all_cluster_hashtags.most_common():
-          try:
-            another_relevant_thread = next(iter([thread for thread in threads if c_hashtag in thread.hashtags]))
-          except Exception:
-            continue
-
-          found = True
-          used_cluster_hashtags.add(c_hashtag)
-          used_hashtags.add(c_hashtag)
-          relevant_threads.add(another_relevant_thread)
-          threads.remove(another_relevant_thread)
-          break
-
-        if not found:
-          break
-        
+      # Note: this mutates threads and relevant_threads
+      pivot_hashtags = pack_cluster(relevant_threads, threads, hashtag)
       if len(relevant_threads) > 3:
-        clusters.append(TweetCluster(relevant_threads, hashtags=used_cluster_hashtags))
+        clusters.append(TweetCluster(relevant_threads, hashtags=pivot_hashtags))
       else:
         threads.update(relevant_threads)
 
   misc = []
   for thread in threads:
     found = False
-    for h in used_hashtags:
-      found = found or h in thread.hashtags
+    for c in clusters:
+      for t in c.threads:
+        found = found or thread.conversation_id == t.conversation_id
     if not found:
       misc.append(thread)
   clusters.append(TweetCluster(misc, hashtags=[], summary="misc"))
