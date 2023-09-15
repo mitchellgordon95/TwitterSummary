@@ -112,9 +112,9 @@ def pack_cluster(relevant_threads, threads, hashtag):
 def cluster_threads(threads):
   # with ThreadPoolExecutor(max_workers=100) as executor:
   #   threads = list(executor.map(add_hashtags, threads))
-  # with open('hashtag_threads_2.pkl', 'wb') as file_:
+  # with open('hashtag_threads.pkl', 'wb') as file_:
   #   pickle.dump(threads, file_)
-  with open('hashtag_threads_2.pkl', 'rb') as file_:
+  with open('hashtag_threads.pkl', 'rb') as file_:
     threads = pickle.load(file_)
 
   hashtag_counter = count_hashtags(threads)

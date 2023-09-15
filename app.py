@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 import tweepy
+import os
 from os import environ
 from dotenv import load_dotenv
 import logging
@@ -87,24 +88,38 @@ def tweets():
     # Get Twitter API credentials
     access_token = current_user.access_token
     access_token_secret = current_user.access_token_secret
+    user_id = current_user.get_id()
+    cache_file = f'/tmp/{user_id}.pkl'
 
-    # Fetch tweets
-    # threads = fetch_tweets(access_token, access_token_secret)
-    # with open('tweets_2.pkl', 'wb') as file_:
-    #   pickle.dump(threads, file_)
-    with open('tweets_2.pkl', 'rb') as file_:
-      threads = pickle.load(file_)
+    if os.path.exists(cache_file):
+      with open(cache_file, 'rb') as file_:
+        clusters = pickle.load(file_)
+    else:
+      # Fetch tweets
+      # threads = fetch_tweets(access_token, access_token_secret)
+      # with open('tweets.pkl', 'wb') as file_:
+      #   pickle.dump(threads, file_)
+      with open('tweets.pkl', 'rb') as file_:
+        threads = pickle.load(file_)
 
-    # Set up the OpenAI API client
-    openai.api_key = environ.get('OPENAI_API_KEY')
+      # Set up the OpenAI API client
+      openai.api_key = environ.get('OPENAI_API_KEY')
 
-    # Cluster tweets and summarize
-    clusters = cluster_threads(threads)
-    clusters = summarize_clusters(clusters)
+      # Cluster tweets and summarize
+      clusters = cluster_threads(threads)
+      print('clustered')
+      clusters = summarize_clusters(clusters)
+      print('summarized')
 
-    # Cluster the clusters if necessary and summarize
-    clusters = meta_cluster(clusters)
-    clusters = meta_summarize(clusters)
+      # Cluster the clusters if necessary and summarize
+      clusters = meta_cluster(clusters)
+      print('meta clustered')
+      clusters = meta_summarize(clusters)
+      print('meta summarized')
+
+      # TODO - replace this with redis
+      with open(cache_file, 'wb') as file_:
+        pickle.dump(clusters, file_)
 
     return render_template('tweets.html', clusters=clusters)
 

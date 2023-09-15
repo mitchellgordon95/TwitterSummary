@@ -109,9 +109,9 @@ def generate_meta_summary(cluster):
 def meta_summarize(clusters):
   # with ThreadPoolExecutor(max_workers=10) as executor:
   #   clusters = list(executor.map(generate_meta_summary, clusters))
-  # with open('meta_summaries_2.pkl', 'wb') as file_:
+  # with open('meta_summaries.pkl', 'wb') as file_:
   #   pickle.dump(clusters, file_)
-  with open('meta_summaries_2.pkl', 'rb') as file_:
+  with open('meta_summaries.pkl', 'rb') as file_:
     clusters = pickle.load(file_)
 
   return clusters
