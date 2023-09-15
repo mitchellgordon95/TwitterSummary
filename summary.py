@@ -13,11 +13,14 @@ TWEETS:
 {tweets_text}
 \"\"\"
 
-Generate a summary of TWEETS. Rules:
+What topic do all TWEETS have in common? Rules:
 
-- The summary must begin with "{num_tweets} people are talking about"
-- The summary must be no more than 1 sentence.
-- The summary must only mention topics discussed in a majority of the tweets."""
+- The topic must begin with "{num_tweets} people are talking about"
+- The topic must be no more than 1 sentence.
+- The topic must be discussed in a majority of the tweets.
+- The topic must be related to {hashtags}
+
+Think out loud, then state the topic prefixed with the TOPIC label."""
 
 def generate_summary(cluster):
   if cluster.summary:
@@ -26,7 +29,11 @@ def generate_summary(cluster):
   tweets_text = "\n\n".join([thread.text for thread in cluster.threads])
   messages = [
     {"role": "system", "content": "You are a helpful assistant."},
-    {"role": "user", "content": SUMMARY_PROMPT.format(tweets_text=tweets_text, num_tweets=len(cluster.threads))}
+    {"role": "user", "content": SUMMARY_PROMPT.format(
+      tweets_text=tweets_text,
+      num_tweets=len(cluster.threads),
+      hashtags=" ".join(cluster.hashtags)
+    )}
   ]
 
   def get_summary():
@@ -37,9 +44,15 @@ def generate_summary(cluster):
     )
     return response.choices[0].message['content'].strip()
 
-  summary = with_retries(get_summary, "API error")
-  summary = summary.strip()
+  response_text = with_retries(get_summary, "API error")
+  lines = response_text.split("\n")
+  summary = None
+  for line in lines:
+    if "TOPIC" in line:
+      summary = line[len("TOPIC")+1:]
+
   summary = summary.strip('"')
+  _, summary = summary.split('about', 1)
 
   return TweetCluster(cluster.threads, hashtags=cluster.hashtags, summary=summary)
 

@@ -4,16 +4,18 @@
     <title>Tweets</title>
 </head>
 <body>
+    <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script> 
     <h1>Tweets from last 24 hours</h1>
     {% for cluster in clusters %}
         <details>
-            <summary>{{ cluster.summary }} {{ cluster.hashtags | join(' ')}}</summary>
-            {% for thread in cluster.threads %}
-                <p>{{ thread.text }}</p>
-                <!-- {% for id in thread.thread_ids %} -->
-                <!--   <p>{{id}}</p> -->
-                <!-- {% endfor %} -->
-            {% endfor %}
+            <summary>({{ cluster.threads | length }}) {{ cluster.summary }}</summary>
+            <div class="tweets-container" style="display:flex">
+              {% for thread in cluster.threads %}
+                <blockquote class="twitter-tweet">
+                  <a href="https://twitter.com/username/status/{{thread.thread_ids[0]}}"></a> 
+                </blockquote>
+              {% endfor %}
+            </div>
         </details>
         <br>
     {% endfor %}
