@@ -57,6 +57,7 @@ def add_hashtags(thread):
   ]
 
   def get_hashtags():
+    print("sending request...")
     response = openai.ChatCompletion.create(
       # model="gpt-4",
       model="gpt-3.5-turbo",
@@ -110,12 +111,12 @@ def pack_cluster(relevant_threads, threads, hashtag):
 
 
 def cluster_threads(threads):
-  # with ThreadPoolExecutor(max_workers=100) as executor:
-  #   threads = list(executor.map(add_hashtags, threads))
+  with ThreadPoolExecutor(max_workers=100) as executor:
+    threads = list(executor.map(add_hashtags, threads))
   # with open('hashtag_threads.pkl', 'wb') as file_:
   #   pickle.dump(threads, file_)
-  with open('hashtag_threads.pkl', 'rb') as file_:
-    threads = pickle.load(file_)
+  # with open('hashtag_threads.pkl', 'rb') as file_:
+  #   threads = pickle.load(file_)
 
   hashtag_counter = count_hashtags(threads)
 

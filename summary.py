@@ -37,6 +37,7 @@ def generate_summary(cluster):
   ]
 
   def get_summary():
+    print("sending request...")
     response = openai.ChatCompletion.create(
       model="gpt-4",
       # model="gpt-3.5-turbo",
@@ -58,11 +59,11 @@ def generate_summary(cluster):
 
 
 def summarize_clusters(clusters):
-  # with ThreadPoolExecutor(max_workers=10) as executor:
-  #   clusters = list(executor.map(generate_summary, clusters))
+  with ThreadPoolExecutor(max_workers=10) as executor:
+    clusters = list(executor.map(generate_summary, clusters))
   # with open('summaries.pkl', 'wb') as file_:
   #   pickle.dump(clusters, file_)
-  with open('summaries.pkl', 'rb') as file_:
-    clusters = pickle.load(file_)
+  # with open('summaries.pkl', 'rb') as file_:
+  #   clusters = pickle.load(file_)
 
   return clusters

@@ -52,6 +52,7 @@ def resummarize(cluster):
     ]
 
     def get_summary():
+      print("sending request...")
       response = openai.ChatCompletion.create(
         model="gpt-4",
         # model="gpt-3.5-turbo",
@@ -65,7 +66,7 @@ def resummarize(cluster):
     _, summary = summary.split('about', 1)
     return TweetCluster(subcluster.threads, hashtags=subcluster.hashtags, summary=summary, subclusters=subcluster.subclusters) 
 
-  with ThreadPoolExecutor(max_workers=7) as executor:
+  with ThreadPoolExecutor(max_workers=10) as executor:
     subclusters = list(executor.map(resummarize_subcluster, cluster.subclusters))
   return TweetCluster(cluster.threads, hashtags=cluster.hashtags, summary=cluster.summary, subclusters=subclusters)
 
@@ -85,6 +86,7 @@ def generate_meta_summary(cluster):
   ]
 
   def get_summary():
+    print("sending request...")
     response = openai.ChatCompletion.create(
       model="gpt-4",
       # model="gpt-3.5-turbo",
@@ -107,11 +109,11 @@ def generate_meta_summary(cluster):
 
 
 def meta_summarize(clusters):
-  # with ThreadPoolExecutor(max_workers=10) as executor:
-  #   clusters = list(executor.map(generate_meta_summary, clusters))
+  with ThreadPoolExecutor(max_workers=10) as executor:
+    clusters = list(executor.map(generate_meta_summary, clusters))
   # with open('meta_summaries.pkl', 'wb') as file_:
   #   pickle.dump(clusters, file_)
-  with open('meta_summaries.pkl', 'rb') as file_:
-    clusters = pickle.load(file_)
+  # with open('meta_summaries.pkl', 'rb') as file_:
+  #   clusters = pickle.load(file_)
 
   return clusters
