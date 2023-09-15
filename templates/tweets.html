@@ -1,6 +1,6 @@
 {% macro render_cluster(cluster) %}
 <details>
-    <summary>({{ cluster.num_tweets }}) {{ cluster.summary }} {{cluster.hashtags}}</summary>
+    <summary>({{ cluster.num_tweets }}) {{ cluster.summary }}</summary>
     {% if cluster.subclusters %}
         <div style="margin-left: 20px">
             {% for subcluster in cluster.subclusters %}
