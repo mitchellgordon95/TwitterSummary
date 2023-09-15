@@ -13,6 +13,7 @@ import pickle
 from twitter import fetch_tweets
 from clustering import cluster_threads, meta_cluster
 from summary import summarize_clusters
+from meta_summary import meta_summarize
 
 DEBUG = False
 
@@ -100,7 +101,10 @@ def tweets():
     # Cluster tweets and summarize
     clusters = cluster_threads(threads)
     clusters = summarize_clusters(clusters)
+
+    # Cluster the clusters if necessary and summarize
     clusters = meta_cluster(clusters)
+    clusters = meta_summarize(clusters)
 
     return render_template('tweets.html', clusters=clusters)
 
