@@ -51,6 +51,8 @@ def user_loader(user_id):
 
 @app.route('/')
 def home():
+    if current_user.is_authenticated:
+      return redirect(url_for('tweets'))
     return render_template('login.html')
 
 @app.route('/login')
