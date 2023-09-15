@@ -10,6 +10,7 @@ import logging
 import numpy as np
 import openai
 import pickle
+import time
 
 from twitter import fetch_tweets
 from clustering import cluster_threads, meta_cluster
@@ -93,7 +94,7 @@ def tweets():
     user_id = current_user.get_id()
     cache_file = f'/tmp/{user_id}.pkl'
 
-    if os.path.exists(cache_file):
+    if os.path.exists(cache_file) and (time.time() - os.path.getmtime('/tmp/7.pkl')) / 60 / 60 < 24:
       with open(cache_file, 'rb') as file_:
         clusters = pickle.load(file_)
     else:
