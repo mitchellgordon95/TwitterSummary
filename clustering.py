@@ -14,8 +14,9 @@ class HashtagsThread:
     self.hashtags = hashtags
 
 class TweetCluster:
-  def __init__(self, threads, summary=None):
+  def __init__(self, threads, hashtags=None, summary=None):
     self.threads = threads
+    self.hashtags = hashtags
     self.summary = summary
 
 def with_retries(func, err_return):
@@ -111,7 +112,7 @@ def cluster_threads(threads):
           break
         
       if len(relevant_threads) > 3:
-        clusters.append(TweetCluster(relevant_threads, summary=" ".join(used_cluster_hashtags)))
+        clusters.append(TweetCluster(relevant_threads, hashtags=used_cluster_hashtags))
       else:
         threads.update(relevant_threads)
 
@@ -122,6 +123,6 @@ def cluster_threads(threads):
       found = found or h in thread.hashtags
     if not found:
       misc.append(thread)
-  clusters.append(TweetCluster(misc, "misc"))
+  clusters.append(TweetCluster(misc, summary="misc"))
 
   return clusters
