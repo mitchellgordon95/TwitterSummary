@@ -90,9 +90,9 @@ def tweets():
 
     # Fetch tweets
     # threads = fetch_tweets(access_token, access_token_secret)
-    # with open('tweets.pkl', 'wb') as file_:
+    # with open('tweets_2.pkl', 'wb') as file_:
     #   pickle.dump(threads, file_)
-    with open('tweets.pkl', 'rb') as file_:
+    with open('tweets_2.pkl', 'rb') as file_:
       threads = pickle.load(file_)
 
     # Set up the OpenAI API client

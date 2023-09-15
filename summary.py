@@ -60,9 +60,9 @@ def generate_summary(cluster):
 def summarize_clusters(clusters):
   # with ThreadPoolExecutor(max_workers=10) as executor:
   #   clusters = list(executor.map(generate_summary, clusters))
-  # with open('summaries.pkl', 'wb') as file_:
+  # with open('summaries_2.pkl', 'wb') as file_:
   #   pickle.dump(clusters, file_)
-  with open('summaries.pkl', 'rb') as file_:
+  with open('summaries_2.pkl', 'rb') as file_:
     clusters = pickle.load(file_)
 
   return clusters
