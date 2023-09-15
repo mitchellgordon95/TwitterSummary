@@ -15,7 +15,7 @@ TWEETS:
 
 What topic do all TWEETS have in common? Rules:
 
-- The topic must begin with "{num_tweets} people are talking about"
+- The topic must begin with "{num_tweets} tweets are about"
 - The topic must be no more than 1 sentence.
 - The topic must be discussed in a majority of the tweets.
 - The topic must be related to {hashtags}
