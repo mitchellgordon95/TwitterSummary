@@ -11,6 +11,7 @@ import numpy as np
 import openai
 import pickle
 import time
+from datetime import datetime
 
 from twitter import fetch_tweets
 from clustering import cluster_threads, meta_cluster
@@ -94,10 +95,12 @@ def tweets():
     user_id = current_user.get_id()
     cache_file = f'/tmp/{user_id}.pkl'
 
-    if os.path.exists(cache_file) and (time.time() - os.path.getmtime('/tmp/7.pkl')) / 60 / 60 < 24:
+    if os.path.exists(cache_file) and (time.time() - os.path.getmtime(cache_file)) / 60 / 60 < 24:
+      last_cache_time = os.path.getmtime(cache_file)
       with open(cache_file, 'rb') as file_:
         clusters = pickle.load(file_)
     else:
+      last_cache_time = time.time()
       # Fetch tweets
       threads = fetch_tweets(access_token, access_token_secret)
       # with open('tweets.pkl', 'wb') as file_:
@@ -124,7 +127,8 @@ def tweets():
       with open(cache_file, 'wb') as file_:
         pickle.dump(clusters, file_)
 
-    return render_template('tweets.html', clusters=clusters)
+    next_refresh = last_cache_time + 24 * 60 * 60
+    return render_template('tweets.html', clusters=clusters, next_refresh=next_refresh)
 
 
 if __name__ == '__main__':

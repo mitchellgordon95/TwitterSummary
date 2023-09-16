@@ -32,8 +32,23 @@
 <body>
     <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script> 
     <h1>Tweets from last 24 hours</h1>
+    <div>Next refresh after <span id="formattedDate"></span>.</div>
+    </br>
     {% for cluster in clusters %}
       {{render_cluster(cluster)}}
     {% endfor %}
+    <script>
+      var epochTimestamp = {{next_refresh}}; // This is 16 September 2021 @ 12:00:00 UTC
+
+      // Convert to a Date object
+      var date = new Date(epochTimestamp * 1000);
+
+      // Format the date in local timezone
+      var dateString = date.toLocaleDateString();
+      var timeString = date.toLocaleTimeString();
+
+      // Combine and display in the HTML element
+      document.getElementById("formattedDate").textContent = `${dateString} ${timeString}`;
+    </script>
 </body>
 </html>
