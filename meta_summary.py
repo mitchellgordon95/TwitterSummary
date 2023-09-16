@@ -60,10 +60,13 @@ def resummarize(cluster):
       )
       return response.choices[0].message['content'].strip()
 
-    summary = with_retries(get_summary, "API error")
-    summary = summary.strip('"')
-    _, summary = summary.split('More specifically,', 1)
-    _, summary = summary.split('about', 1)
+    response_text = with_retries(get_summary, "API error")
+    try:
+      summary = response_text.strip('"')
+      _, summary = summary.split('specifically,', 1)
+      _, summary = summary.split('about', 1)
+    except:
+      summary = f'Error parsing model output: {response_text}'
     return TweetCluster(subcluster.threads, hashtags=subcluster.hashtags, summary=summary, subclusters=subcluster.subclusters) 
 
   with ThreadPoolExecutor(max_workers=10) as executor:
@@ -95,14 +98,18 @@ def generate_meta_summary(cluster):
     return response.choices[0].message['content'].strip()
 
   response_text = with_retries(get_summary, "API error")
-  lines = response_text.split("\n")
-  summary = None
-  for line in lines:
-    if "TOPIC" in line:
-      summary = line[len("TOPIC")+1:]
 
-  summary = summary.strip('"')
-  _, summary = summary.split('about', 1)
+  try:
+    lines = response_text.split("\n")
+    summary = None
+    for line in lines:
+      if "TOPIC" in line:
+        summary = line[len("TOPIC")+1:]
+
+    summary = summary.strip('"')
+    _, summary = summary.split('about', 1)
+  except:
+    summary = f"Error parsing model output: {response_text}"
 
   out = TweetCluster(cluster.threads, hashtags=cluster.hashtags, summary=summary, subclusters=cluster.subclusters)
   return resummarize(out)

@@ -46,14 +46,19 @@ def generate_summary(cluster):
     return response.choices[0].message['content'].strip()
 
   response_text = with_retries(get_summary, "API error")
-  lines = response_text.split("\n")
-  summary = None
-  for line in lines:
-    if "TOPIC" in line:
-      summary = line[len("TOPIC")+1:]
 
-  summary = summary.strip('"')
-  _, summary = summary.split('about', 1)
+  try:
+    lines = response_text.split("\n")
+    summary = None
+    for line in lines:
+      if "TOPIC" in line:
+        summary = line[len("TOPIC")+1:]
+
+    if summary:
+      summary = summary.strip('"')
+      _, summary = summary.split('about', 1)
+  except:
+    summary = f"Error parsing model output: {response_text}"
 
   return TweetCluster(cluster.threads, hashtags=cluster.hashtags, summary=summary)
 
