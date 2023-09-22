@@ -32,7 +32,7 @@ What topic do all TWEETS have in common? Rules:
 - The topic must be no more than 1 sentence.
 - The topic must be discussed in a majority of the tweets.
 - The topic must be related to {hashtags}
-- The topic must begin with "{num_cluster_tweets} tweets are about the advancements, challenges, and applications of AI and machine learning. More specifically, {num_tweets} are about"
+- The topic must begin with "{num_cluster_tweets} tweets are about {cluster_summary}.  More specifically, {num_tweets} are about"
 
 Do not think. Just say the topic and only the topic."""
 
@@ -47,6 +47,7 @@ def resummarize(cluster):
         tweets_text=tweets_text,
         num_tweets=subcluster.num_tweets,
         num_cluster_tweets=cluster.num_tweets,
+        cluster_summary=cluster.summary,
         hashtags=" ".join(subcluster.hashtags)
       )}
     ]
