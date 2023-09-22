@@ -7,7 +7,6 @@ TODOs
 
 Async await
 Try catch API errors
-Click to expand
 
 Later
 Redis caching
