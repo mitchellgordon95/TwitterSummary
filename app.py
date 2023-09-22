@@ -12,6 +12,7 @@ import openai
 import pickle
 import time
 from datetime import datetime
+from asgiref.wsgi import WsgiToAsgi
 
 from twitter import fetch_tweets
 from clustering import cluster_threads, meta_cluster
@@ -145,6 +146,4 @@ async def tweets():
     next_refresh = last_cache_time + 24 * 60 * 60
     return render_template('tweets.html', clusters=clusters, next_refresh=next_refresh)
 
-
-if __name__ == '__main__':
-    app.run(debug=True)
+asgi_app = WsgiToAsgi(app)
