@@ -15,7 +15,7 @@ from datetime import datetime
 from asgiref.wsgi import WsgiToAsgi
 
 from twitter import fetch_tweets
-from clustering import cluster_threads, meta_cluster
+from clustering import cluster_threads, meta_cluster, TweetCluster
 from summary import summarize_clusters
 from meta_summary import meta_summarize
 
@@ -95,6 +95,14 @@ def authorize():
 
 OPENAI_ERROR_MSG = 'Oops, we probably hit the OpenAI API limit. I\'m not made of money!'
 
+def load_cache(cache_file, last_cache_time):
+  with open(cache_file, 'rb') as file_:
+    clusters = pickle.load(file_)
+    if clusters and clusters[0].summary.startswith('You might have refreshed the page') and (time.time() - last_cache_time) > 180:
+      raise Exception()
+    return clusters
+  
+
 @app.route('/tweets')
 @login_required
 async def tweets():
@@ -105,11 +113,16 @@ async def tweets():
     cache_file = f'/tmp/{user_id}.pkl'
 
     if os.path.exists(cache_file) and (time.time() - os.path.getmtime(cache_file)) / 60 / 60 < 24:
-      last_cache_time = os.path.getmtime(cache_file)
-      with open(cache_file, 'rb') as file_:
-        clusters = pickle.load(file_)
+      try:
+        last_cache_time = os.path.getmtime(cache_file)
+        clusters = load_cache(cache_file, last_cache_time)
+      except:
+        os.remove(cache_file)
+        return render_template('error.html', message="Oops, something went wrong. Try refreshing the page?")
     else:
       last_cache_time = time.time()
+      with open(cache_file, 'wb') as file_:
+        pickle.dump([TweetCluster(threads=[], summary="You might have refreshed the page while it was still loading. Please check back in a minute or two.")], file_)
       # Fetch tweets
       try:
         threads = fetch_tweets(access_token, access_token_secret)
@@ -137,6 +150,7 @@ async def tweets():
         clusters = await meta_summarize(clusters)
         print('meta summarized')
       except Exception as e:
+        os.remove(cache_file)
         return render_template('error.html', message=OPENAI_ERROR_MSG)
 
       # TODO - replace this with redis

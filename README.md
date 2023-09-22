@@ -1,16 +1,17 @@
+# Setup
+
 pip install -r requirements.txt
 sudo apt install python3-flask
 flask run --host=0.0.0.0 --debug
 
-# "prod"
+## "prod"
 sudo apt install uvicorn
 uvicorn app:asgi_app --workers 4 --host 0.0.0.0 --port 5000
 
-
 TODOs
 
-Async await (maybe just use async routes?)
-https://testdriven.io/blog/flask-async/
+.env.template, rotate keys, gitignore .env
+login polish
 
 Later
 Redis caching
