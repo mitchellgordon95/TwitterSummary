@@ -6,7 +6,6 @@ flask run --host=0.0.0.0 --debug
 TODOs
 
 User ID = Twitter ID
-Demo page
 Async await
 Try catch API errors
 Click to expand
