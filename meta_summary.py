@@ -1,6 +1,6 @@
 import openai
 from twitter import Thread
-from concurrent.futures import ThreadPoolExecutor
+import asyncio
 from clustering import with_retries, TweetCluster
 import re
 import time
@@ -37,9 +37,9 @@ What topic do all TWEETS have in common? Rules:
 Do not think. Just say the topic and only the topic."""
 
 
-def resummarize(cluster):
+async def resummarize(cluster):
   """Given a meta-cluster, resummarize the subclusters to be more specific."""
-  def resummarize_subcluster(subcluster):
+  async def resummarize_subcluster(subcluster):
     tweets_text = "\n\n".join([thread.text for thread in subcluster.threads])
     messages = [
       {"role": "system", "content": "You are a helpful assistant."},
@@ -52,16 +52,16 @@ def resummarize(cluster):
       )}
     ]
 
-    def get_summary():
+    async def get_summary():
       print("sending request...")
-      response = openai.ChatCompletion.create(
+      response = await openai.ChatCompletion.acreate(
         model="gpt-4",
         # model="gpt-3.5-turbo",
         messages=messages
       )
       return response.choices[0].message['content'].strip()
 
-    response_text = with_retries(get_summary, "API error")
+    response_text = await with_retries(get_summary, "API error")
     try:
       summary = response_text.strip('"')
       _, summary = summary.split('specifically,', 1)
@@ -70,13 +70,12 @@ def resummarize(cluster):
       summary = f'Error parsing model output: {response_text}'
     return TweetCluster(subcluster.threads, hashtags=subcluster.hashtags, summary=summary, subclusters=subcluster.subclusters) 
 
-  with ThreadPoolExecutor(max_workers=10) as executor:
-    subclusters = list(executor.map(resummarize_subcluster, cluster.subclusters))
+  subclusters = await asyncio.gather(*[resummarize_subcluster(c) for c in cluster.subclusters])
   return TweetCluster(cluster.threads, hashtags=cluster.hashtags, summary=cluster.summary, subclusters=subclusters)
 
 
 
-def generate_meta_summary(cluster):
+async def generate_meta_summary(cluster):
   if cluster.summary:
     return cluster
 
@@ -89,16 +88,16 @@ def generate_meta_summary(cluster):
     )}
   ]
 
-  def get_summary():
+  async def get_summary():
     print("sending request...")
-    response = openai.ChatCompletion.create(
+    response = await openai.ChatCompletion.acreate(
       model="gpt-4",
       # model="gpt-3.5-turbo",
       messages=messages
     )
     return response.choices[0].message['content'].strip()
 
-  response_text = with_retries(get_summary, "API error")
+  response_text = await with_retries(get_summary, "API error")
 
   try:
     lines = response_text.split("\n")
@@ -113,12 +112,11 @@ def generate_meta_summary(cluster):
     summary = f"Error parsing model output: {response_text}"
 
   out = TweetCluster(cluster.threads, hashtags=cluster.hashtags, summary=summary, subclusters=cluster.subclusters)
-  return resummarize(out)
+  return await resummarize(out)
 
 
-def meta_summarize(clusters):
-  with ThreadPoolExecutor(max_workers=10) as executor:
-    clusters = list(executor.map(generate_meta_summary, clusters))
+async def meta_summarize(clusters):
+  clusters = await asyncio.gather(*[generate_meta_summary(cluster) for cluster in clusters])
   # with open('meta_summaries.pkl', 'wb') as file_:
   #   pickle.dump(clusters, file_)
   # with open('meta_summaries.pkl', 'rb') as file_:

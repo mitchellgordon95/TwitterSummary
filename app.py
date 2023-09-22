@@ -96,7 +96,7 @@ OPENAI_ERROR_MSG = 'Oops, we probably hit the OpenAI API limit. I\'m not made of
 
 @app.route('/tweets')
 @login_required
-def tweets():
+async def tweets():
     # Get Twitter API credentials
     access_token = current_user.access_token
     access_token_secret = current_user.access_token_secret
@@ -125,17 +125,17 @@ def tweets():
       try:
         print('starting')
         # Cluster tweets and summarize
-        clusters = cluster_threads(threads)
+        clusters = await cluster_threads(threads)
         print('clustered')
-        clusters = summarize_clusters(clusters)
+        clusters = await summarize_clusters(clusters)
         print('summarized')
 
         # Cluster the clusters if necessary and summarize
         clusters = meta_cluster(clusters)
         print('meta clustered')
-        clusters = meta_summarize(clusters)
+        clusters = await meta_summarize(clusters)
         print('meta summarized')
-      except:
+      except Exception as e:
         return render_template('error.html', message=OPENAI_ERROR_MSG)
 
       # TODO - replace this with redis

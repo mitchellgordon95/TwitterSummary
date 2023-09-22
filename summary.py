@@ -1,6 +1,6 @@
 import openai
 from twitter import Thread
-from concurrent.futures import ThreadPoolExecutor
+import asyncio
 from clustering import with_retries, TweetCluster
 import re
 import time
@@ -22,7 +22,7 @@ What topic do all TWEETS have in common? Rules:
 
 Think out loud, then state the topic prefixed with the TOPIC label."""
 
-def generate_summary(cluster):
+async def generate_summary(cluster):
   if cluster.summary:
     return cluster
 
@@ -36,16 +36,16 @@ def generate_summary(cluster):
     )}
   ]
 
-  def get_summary():
+  async def get_summary():
     print("sending request...")
-    response = openai.ChatCompletion.create(
+    response = await openai.ChatCompletion.acreate(
       model="gpt-4",
       # model="gpt-3.5-turbo",
       messages=messages
     )
     return response.choices[0].message['content'].strip()
 
-  response_text = with_retries(get_summary, "API error")
+  response_text = await with_retries(get_summary, "API error")
 
   try:
     lines = response_text.split("\n")
@@ -63,9 +63,8 @@ def generate_summary(cluster):
   return TweetCluster(cluster.threads, hashtags=cluster.hashtags, summary=summary)
 
 
-def summarize_clusters(clusters):
-  with ThreadPoolExecutor(max_workers=10) as executor:
-    clusters = list(executor.map(generate_summary, clusters))
+async def summarize_clusters(clusters):
+  clusters = await asyncio.gather(*[generate_summary(cluster) for cluster in clusters])
   # with open('summaries.pkl', 'wb') as file_:
   #   pickle.dump(clusters, file_)
   # with open('summaries.pkl', 'rb') as file_:

@@ -1,6 +1,6 @@
 import openai
+import asyncio
 from twitter import Thread
-from concurrent.futures import ThreadPoolExecutor
 import re
 import time
 from collections import Counter
@@ -28,10 +28,10 @@ class TweetCluster:
         count += cluster.num_tweets
     return count
 
-def with_retries(func, err_return):
+async def with_retries(func, err_return):
   for attempt in range(1, 4):  # 3 attempts with exponential backoff
     try:
-      return func()
+      return await func()
     except Exception as e:
       wait_time = 2 ** attempt
       print(f"Error generating summary on attempt {attempt}. Retrying in {wait_time} seconds. Error: {str(e)}")
@@ -49,16 +49,16 @@ If TWEET refers to a location or event, include at least one hashtag containing 
 If TWEET refers to a specific object or thing, include at least one hashtag containing the name of that thing.
 """
 
-def add_hashtags(thread):
+async def add_hashtags(thread):
   # TODO - count tokens
   messages = [
     {"role": "system", "content": "You are a helpful assistant."},
     {"role": "user", "content": HASHTAG_PROMPT.format(tweet=thread.text)}
   ]
 
-  def get_hashtags():
+  async def get_hashtags():
     print("sending request...")
-    response = openai.ChatCompletion.create(
+    response = await openai.ChatCompletion.acreate(
       # model="gpt-4",
       model="gpt-3.5-turbo",
       messages=messages
@@ -68,7 +68,7 @@ def add_hashtags(thread):
 
     return [h.lower() for h in hashtags]
 
-  hashtags = with_retries(get_hashtags, [])
+  hashtags = await with_retries(get_hashtags, [])
 
   return HashtagsThread(thread, hashtags)
 
@@ -110,9 +110,8 @@ def pack_cluster(relevant_threads, threads, hashtag):
   return pivot_hashtags
 
 
-def cluster_threads(threads):
-  with ThreadPoolExecutor(max_workers=100) as executor:
-    threads = list(executor.map(add_hashtags, threads))
+async def cluster_threads(threads):
+  threads = await asyncio.gather(*[add_hashtags(thread) for thread in threads])
   # with open('hashtag_threads.pkl', 'wb') as file_:
   #   pickle.dump(threads, file_)
   # with open('hashtag_threads.pkl', 'rb') as file_:
