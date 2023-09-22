@@ -13,8 +13,17 @@
     </br>
     <div><a href="{{ url_for('login') }}">Login with Twitter</a></div>
     <div>(Takes 60-120 seconds to load.)</div>
-    </br>
+    <ul>
+      <li>Pulls your last 24 hours of timeline tweets</li>
+      <li>Clusters them using ChatGPT (maybe twice)</li>
+      <li>Summarizes the clusters</li>
+    </ul>
     <div>or try the <a href="{{ url_for('static', filename='demo.html') }}">demo page</a></div>
+    </br>
+    <a href="https://github.com/mitchellgordon95/TwitterSummary" target="_blank">
+      <img src="https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png" alt="GitHub Logo" class="github-logo" style="width:30px">
+    </a>
+    <a href="https://twitter.com/MitchellAGordon?ref_src=twsrc%5Etfw" class="twitter-follow-button" data-show-screen-name="false" data-show-count="false">Follow @MitchellAGordon</a><script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
 
 </body>
 
