@@ -5,8 +5,8 @@ flask run --host=0.0.0.0 --debug
 
 TODOs
 
-Async await
-Try catch API errors
+Async await (maybe just use async routes?)
+https://testdriven.io/blog/flask-async/
 
 Later
 Redis caching

@@ -92,6 +92,8 @@ def authorize():
 
     return redirect(url_for('tweets'))
 
+OPENAI_ERROR_MSG = 'Oops, we probably hit the OpenAI API limit. I\'m not made of money!'
+
 @app.route('/tweets')
 @login_required
 def tweets():
@@ -108,7 +110,10 @@ def tweets():
     else:
       last_cache_time = time.time()
       # Fetch tweets
-      threads = fetch_tweets(access_token, access_token_secret)
+      try:
+        threads = fetch_tweets(access_token, access_token_secret)
+      except:
+        return render_template('twitter_error.html')
       # with open('tweets.pkl', 'wb') as file_:
       #   pickle.dump(threads, file_)
       # with open('tweets.pkl', 'rb') as file_:
@@ -117,17 +122,21 @@ def tweets():
       # Set up the OpenAI API client
       openai.api_key = environ.get('OPENAI_API_KEY')
 
-      # Cluster tweets and summarize
-      clusters = cluster_threads(threads)
-      print('clustered')
-      clusters = summarize_clusters(clusters)
-      print('summarized')
+      try:
+        print('starting')
+        # Cluster tweets and summarize
+        clusters = cluster_threads(threads)
+        print('clustered')
+        clusters = summarize_clusters(clusters)
+        print('summarized')
 
-      # Cluster the clusters if necessary and summarize
-      clusters = meta_cluster(clusters)
-      print('meta clustered')
-      clusters = meta_summarize(clusters)
-      print('meta summarized')
+        # Cluster the clusters if necessary and summarize
+        clusters = meta_cluster(clusters)
+        print('meta clustered')
+        clusters = meta_summarize(clusters)
+        print('meta summarized')
+      except:
+        return render_template('error.html', message=OPENAI_ERROR_MSG)
 
       # TODO - replace this with redis
       with open(cache_file, 'wb') as file_:
