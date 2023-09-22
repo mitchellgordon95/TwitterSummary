@@ -67,6 +67,11 @@ def login():
     session['request_token'] = auth.request_token  # updated line
     return redirect(redirect_url)
 
+@app.route('/logout')
+def logout():
+    logout_user()
+    return redirect(url_for('home'))
+
 @app.route('/authorize')
 def authorize():
     verifier = request.args.get('oauth_verifier')
@@ -126,7 +131,9 @@ async def tweets():
       # Fetch tweets
       try:
         threads = fetch_tweets(access_token, access_token_secret)
-      except:
+      except Exception as e:
+        print(e)
+        os.remove(cache_file)
         return render_template('twitter_error.html')
       # with open('tweets.pkl', 'wb') as file_:
       #   pickle.dump(threads, file_)

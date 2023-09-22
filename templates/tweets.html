@@ -39,6 +39,8 @@
     {% for cluster in clusters %}
       {{render_cluster(cluster)}}
     {% endfor %}
+
+    <div><a href="{{url_for('logout')}}">Logout</div>
     <script>
       var epochTimestamp = {{next_refresh}}; // This is 16 September 2021 @ 12:00:00 UTC
 
