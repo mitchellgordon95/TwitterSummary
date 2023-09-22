@@ -35,6 +35,7 @@ login_manager.init_app(app)
 
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    # TODO - rename this to twitter ID
     username = db.Column(db.String(64), index=True, unique=True)
     access_token = db.Column(db.String(200))
     access_token_secret = db.Column(db.String(200))
@@ -75,15 +76,20 @@ def authorize():
         auth.get_access_token(verifier)
     except tweepy.TweepError:
         print('Error! Failed to get access token.')
+
     api = tweepy.API(auth)
     user_info = api.verify_credentials()
-    # TODO - don't make a new user every time we auth twitter
-    new_user = User(username=str(np.random.rand()))
-    new_user.set_access_token(auth.access_token)
-    new_user.set_access_token_secret(auth.access_token_secret)
-    db.session.add(new_user)
+    user_id = user_info._json['id_str']
+    user = db.session.query(User).filter_by(username=user_id).first()
+    if not user:
+      user = User(username=user_id)
+      db.session.add(user)
+
+    user.set_access_token(auth.access_token)
+    user.set_access_token_secret(auth.access_token_secret)
     db.session.commit()
-    login_user(new_user)
+    login_user(user)
+
     return redirect(url_for('tweets'))
 
 @app.route('/tweets')
