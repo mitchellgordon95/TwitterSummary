@@ -5,6 +5,8 @@
 - Clusters them using ChatGPT (maybe twice)
 - Summarize the clusters
 
+If the demo is still up, it's at http://twitter.mitchgordon.me
+
 # Setup
 
 - Copy .env.template to .env
